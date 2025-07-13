@@ -1,0 +1,54 @@
+{
+  "text": "analyze",
+  "lemma": "analyze",
+  "pos": "VERB",
+  "modifiers": [],
+  "subject": {
+    "text": "you",
+    "lemma": "you",
+    "pos": "PRON",
+    "modifiers": [],
+    "subject": null,
+    "object": null,
+    "auxiliaries": [],
+    "oblique_args": []
+  },
+  "object": {
+    "text": "report",
+    "lemma": "report",
+    "pos": "NOUN",
+    "modifiers": [
+      { "type": "adjective", "text": "latest" },
+      { "type": "adjective", "text": "financial" },
+      {
+        "text": "Microsoft",
+        "lemma": "Microsoft",
+        "pos": "PROPN",
+        "modifiers": [],
+        "subject": null,
+        "object": null,
+        "auxiliaries": [],
+        "oblique_args": [],
+        "relation_type": "from"
+      }
+    ],
+    "subject": null,
+    "object": null,
+    "auxiliaries": [],
+    "oblique_args": []
+  },
+  "auxiliaries": ["Can"],
+  "oblique_args": [
+    {
+      "text": "me",
+      "lemma": "I",
+      "pos": "PRON",
+      "modifiers": [],
+      "subject": null,
+      "object": null,
+      "auxiliaries": [],
+      "oblique_args": [],
+      "relation_type": "for"
+    }
+  ]
+}

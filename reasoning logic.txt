@@ -1,0 +1,113 @@
+if auxiliary and lemma is "can" then add field challenge.
+next find challenge to what. so go to the head ID. and mark that head as the challenge subject. "analyse".
+next find to whome. by finding nsubj of as sibling. "you".
+head ID 0 shows root.
+
+{
+  "metadata": {
+    "source_text": "Remind me to eat maggie at 9pm and send the report tomorrow morning",
+    "timestamp": "2025-07-10T14:20:00+05:30",
+    "user_id": "aditya_k"
+  },
+  "pragmatics": {
+    "intent_primary": "REQUEST",
+    "intent_secondary": ["TASK_CREATION", "REMINDER"],
+    "sentiment": "neutral",
+    "emotion": null,
+    "style": {
+      "formality": "informal",
+      "politeness": 8,
+      "modality": "possibility"
+    }
+  },
+  "context": {
+    "timezone": "Asia/Kolkata",
+    "device": "desktop",
+    "previous_task_id": "null"
+  },
+  "tasks": [
+    {
+      "id": "task_1",
+      "action": {
+        "lemma": "remind",
+        "text": "remind",
+        "pos": "VERB"
+      },
+      "confidence": 0.95,
+      "agent": {
+        "text": "you",
+        "pos": "PRON",
+        "is_ai": true
+      },
+      "parameters": [
+        {
+          "role": "recipient",
+          "entity": {
+            "text": "me",
+            "pos": "PRON",
+            "lemma": "I"
+          }
+        },
+        {
+          "role": "secondary_action",
+          "entity": {
+            "action": {
+              "text": "eat",
+              "lemma": "eat",
+              "pos": "VERB"
+            },
+            "parameters": [
+              {
+                "role": "direct_object",
+                "entity": {
+                  "text": "maggie",
+                  "pos": "PROPN"
+                }
+              },
+              {
+                "role": "time",
+                "entity": {
+                  "text": "9pm",
+                  "normalized": "21:00:00",
+                  "pos": "NOUN",
+                  "ner_type": "TIME"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "task_2",
+      "action": {
+        "lemma": "send",
+        "text": "send",
+        "pos": "VERB"
+      },
+      "confidence": 0.91,
+      "agent": {
+        "text": "you",
+        "is_ai": true
+      },
+      "parameters": [
+        {
+          "role": "direct_object",
+          "entity": {
+            "text": "report",
+            "pos": "NOUN"
+          }
+        },
+        {
+          "role": "time",
+          "entity": {
+            "text": "tomorrow morning",
+            "normalized": "2025-07-11T08:00:00",
+            "recurrence": null
+          }
+        }
+      ]
+    }
+  ]
+}
+
