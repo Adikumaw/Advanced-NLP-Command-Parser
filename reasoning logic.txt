@@ -3,6 +3,74 @@ next find challenge to what. so go to the head ID. and mark that head as the cha
 next find to whome. by finding nsubj of as sibling. "you".
 head ID 0 shows root.
 
+> Send the weekly report from accounting to marketing next Friday.
+
+{
+  "metadata": {
+    "source_text": "Send the weekly report from accounting to marketing next Friday.",
+    "num_sentences": 1,
+    "timestamp": "2023-10-27T10:30:00.123456"
+  },
+  "pragmatics": {
+    "intent_primary": "COMMAND",
+    "sentiment": "neutral",
+    ...
+  },
+  "tasks": {
+    "action": {
+      "lemma": "send",
+      "text": "Send",
+      "pos": "VERB"
+    },
+    "agent": null,
+    "parameters": [
+      {
+        "role": "direct_object",
+        "entity": {
+          "lemma": "report",
+          "pos": "NOUN",
+          "text": "the weekly report",
+          "ner_type": "THING",
+          "normalized": "report",
+          "modifiers": [
+            { "text": "weekly", ... }
+          ]
+        }
+      },
+      {
+        "role": "source",
+        "entity": {
+          "lemma": "accounting",
+          "pos": "NOUN",
+          "text": "accounting",
+          "ner_type": "THING",
+          "normalized": "accounting"
+        }
+      },
+      {
+        "role": "target",
+        "entity": {
+          "lemma": "marketing",
+          "pos": "NOUN",
+          "text": "marketing",
+          "ner_type": "THING",
+          "normalized": "marketing"
+        }
+      },
+      {
+        "role": "time_reference",
+        "entity": {
+          "text": "next Friday",
+          "pos": "TIME",
+          "lemma": "next Friday",
+          "ner_type": "DATE",
+          "normalized": "2023-11-03T00:00:00"
+        }
+      }
+    ]
+  }
+}
+
 {
   "metadata": {
     "source_text": "Remind me to eat maggie at 9pm and send the report tomorrow morning",
