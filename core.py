@@ -1,3 +1,13 @@
+"""
+This script provides an advanced natural language command parser. It uses the
+Stanza NLP library to perform deep linguistic analysis, including dependency
+parsing and named entity recognition (NER). The goal is to convert a user's
+command into a structured JSON object that details the primary action, its
+parameters, and their semantic roles.
+
+The script features an interactive shell for real-time command processing.
+"""
+
 import stanza
 import sys
 import json
@@ -6,14 +16,21 @@ from dateparser.search import search_dates
 
 # --- Configuration ---
 # Use 'gpu=False' if you don't have a compatible GPU or CUDA installed.
-# The 'tokenize,pos,lemma,depparse' processors are needed for our tasks.
+# The 'tokenize,pos,lemma,depparse,ner' processors are essential for the parsing logic.
 PROCESSORS = 'tokenize,pos,lemma,depparse,ner'
 
 # --- Helper Functions to Build JSON Parts ---
 
 def extract_metadata(doc):
     """
-    Extracts metadata from the document, such as the number of sentences and words.
+    Extracts high-level metadata from the processed Stanza document.
+
+    Args:
+        doc (stanza.Document): The processed Stanza document object.
+
+    Returns:
+        dict: A dictionary containing metadata such as the original text,
+              sentence count, and a timestamp.
     """
     metadata = {
         "source_text": doc.text,
@@ -24,8 +41,18 @@ def extract_metadata(doc):
 
 def extract_pragmatics(doc):
     """
-    Analyzes the overall feel of the query.
-    This is a simplified version; a real one would use more complex models.
+    Analyzes the overall intent and style of the query.
+
+    This is a simplified, rule-based implementation. A production system might
+    use a dedicated intent classification model. It infers intent (Question,
+    Request, Command) and modality based on root verbs and auxiliary words.
+
+    Args:
+        doc (stanza.Document): The processed Stanza document object.
+
+    Returns:
+        dict: A dictionary containing pragmatic analysis, including intent,
+              sentiment, and style.
     """
     pragmatics = {
         "intent_primary": "UNKNOWN",
@@ -37,32 +64,44 @@ def extract_pragmatics(doc):
             "modality": None
         }
     }
-    
+
     # Simple rule-based logic for intent and modality
-    root_verb = find_root(doc.sentences[0])
+    if not doc.sentences:
+        return pragmatics
+    sentence = doc.sentences[0]
+    root_verb = find_root(sentence)
     if not root_verb:
         return pragmatics
 
     # Check for question words
-    first_word = doc.sentences[0].words[0].lemma.lower()
-    if first_word in ["who", "what", "where", "when", "why", "how"]:
+    first_word_lemma = sentence.words[0].lemma.lower()
+    if first_word_lemma in ["who", "what", "where", "when", "why", "how"]:
         pragmatics["intent_primary"] = "QUESTION"
     elif root_verb.upos == "VERB":
-        pragmatics["intent_primary"] = "REQUEST" if "you" in [w.lemma for w in doc.sentences[0].words] else "COMMAND"
+        # A command involving "you" is often a request.
+        pragmatics["intent_primary"] = "REQUEST" if "you" in [w.lemma for w in sentence.words] else "COMMAND"
 
-    # Check for modality (like "can", "will", "should")
-    for word in doc.sentences[0].words:
+    # Check for modality (e.g., "can", "will", "should")
+    for word in sentence.words:
         if word.deprel == 'aux' and word.head == root_verb.id:
             if word.lemma == 'can':
                 pragmatics['style']['modality'] = 'possibility_challenge'
                 pragmatics['style']['politeness'] = 8
             # Add more rules for 'will', 'should', etc.
-            break # Assume one main modal auxiliary
-            
+            break  # Assume one main modal auxiliary
+
     return pragmatics
 
 def find_root(sentence):
-    """Finds the root word of a sentence."""
+    """
+    Finds the root word of a sentence, which typically represents the main action.
+
+    Args:
+        sentence (stanza.Sentence): The Stanza sentence object.
+
+    Returns:
+        stanza.Word: The root word object, or None if not found.
+    """
     for word in sentence.words:
         if word.deprel == 'root':
             return word
@@ -70,96 +109,106 @@ def find_root(sentence):
 
 def extract_word_preposition(word, sentence):
     """
-    Extracts the preposition associated with a word in a sentence.
-    This is useful for understanding the context of the word.
+    Finds the preposition attached to a word (its 'case').
+
+    This is crucial for determining semantic roles like 'source' (from),
+    'target' (to), or 'location' (in, on, at).
+
+    Args:
+        word (stanza.Word): The word to check for an associated preposition.
+        sentence (stanza.Sentence): The sentence containing the word.
+
+    Returns:
+        str: The text of the preposition, or None if not found.
     """
-    preposition = None
     for w in sentence.words:
         if w.head == word.id and w.deprel == 'case':
-            preposition = w.text
-            break
-    return preposition
+            return w.text
+    return None
 
 def extract_word_modifiers_and_embedded_params(word, sentence, stanza_entity=None):
     """
-    Extracts modifiers (e.g., adjectives, compounds) and flags embedded parameters
-    like sources or locations (e.g., 'from Microsoft') attached to this word.
+    Extracts descriptive modifiers and identifies embedded phrasal parameters.
+
+    For a given noun, this function distinguishes between:
+    1.  **Modifiers**: Words that describe the noun and should remain part of its
+        entity (e.g., "financial" in "financial report").
+    2.  **Embedded Parameters**: Prepositional phrases that act as separate
+        parameters (e.g., "from Microsoft" in "a report from Microsoft").
+
+    Args:
+        word (stanza.Word): The head word of the entity.
+        sentence (stanza.Sentence): The sentence object.
+        stanza_entity (stanza.Entity, optional): The full Stanza NER entity,
+            if one exists, to avoid re-adding its own words as modifiers.
+
     Returns:
-        - modifiers: list of descriptive modifiers to attach to entity
-        - embedded_params: list of words that should be treated as separate parameters
+        tuple[list, list]: A tuple containing:
+            - A list of modifier dictionaries.
+            - A list of embedded parameter dictionaries to be processed separately.
     """
     modifiers = []
     embedded_params = []
 
-    entity_word_ids = []
-    if stanza_entity:
-        entity_word_ids = {w.id for w in stanza_entity.words}
+    entity_word_ids = {w.id for w in stanza_entity.words} if stanza_entity else set()
 
     for w in sentence.words:
         if w.head != word.id:
             continue
-
-        # --- NEW: Don't add a word as a modifier if it's already part of the main entity text ---
+        # Don't add a word as a modifier if it's already part of the main entity text
         if w.id in entity_word_ids:
             continue
 
-        # Extract preposition if it's a prepositional phrase (e.g., 'from Microsoft')
-        case_word = next((cw for cw in sentence.words if cw.head == w.id and cw.deprel == 'case'), None)
-        preposition = case_word.text if case_word else None
+        preposition = extract_word_preposition(w, sentence)
 
-        # Parameter-worthy dependents
-        if w.deprel in ['nmod', 'obl', 'obl:agent', 'nmod:agent']:
-            if preposition in ['from', 'by', 'to', 'with', 'in', 'on', 'at', 'for', 'before', 'after', 'during']:
-                # Tag this as a candidate for separate parameter
-                embedded_params.append({
-                    "word": w,
-                    "preposition": preposition,
-                    "deprel": w.deprel
-                })
-                continue  # skip adding to modifiers
+        # Identify dependents that are likely separate parameters
+        if w.deprel in ['nmod', 'obl'] and preposition in [
+            'from', 'by', 'to', 'with', 'in', 'on', 'at', 'for', 'before', 'after', 'during'
+        ]:
+            embedded_params.append({
+                "word": w,
+                "preposition": preposition,
+                "deprel": w.deprel
+            })
+            continue
 
-        # Valid modifiers to keep inside entity
+        # Identify valid modifiers to keep with the entity
         if w.deprel in ['amod', 'nummod', 'compound', 'neg', 'advmod', 'conj']:
             modifiers.append({
-                "text": w.text,
-                "lemma": w.lemma,
-                "pos": w.upos,
-                "deprel": w.deprel
+                "text": w.text, "lemma": w.lemma, "pos": w.upos, "deprel": w.deprel
             })
 
     return modifiers, embedded_params
 
 def normalize_time_and_date(entity_dict):
     """
-    Uses the dateparser library to normalize any time or date expression.
-    
-    Args:
-        entity_dict: A dictionary representing the entity, which must have a 'text' key
-                     and can have 'modifiers'.
-    
-    Returns:
-        An ISO 8601 formatted string if parsing is successful, otherwise None.
-    """
-    # Combine the main entity text with its modifiers for full context.
-    # e.g., for "next" and "week", the full text is "next week".
-    full_text = entity_dict.get('text', '')
-    # NOTE: No need for modifiers here, as Stanza's NER gives us the full text.
-    text_to_parse = full_text.strip()
+    Normalizes a date/time expression to an ISO 8601 string using dateparser.
 
+    This function leverages the `dateparser` library, which is highly effective
+    at interpreting ambiguous, human-readable date/time strings.
+
+    Args:
+        entity_dict (dict): A dictionary representing the entity. It must have
+                          a 'text' key containing the string to parse
+                          (e.g., "tomorrow morning", "in 5 minutes").
+
+    Returns:
+        str: An ISO 8601 formatted string (e.g., "2023-11-03T09:00:00"),
+             or None if parsing fails.
+    """
+    text_to_parse = entity_dict.get('text', '').strip()
     if not text_to_parse:
         return None
 
-    # Use dateparser. It's smart about context.
-    # 'PREFER_DATES_FROM': 'future' tells it to resolve ambiguities like "Friday at 5pm"
+    # 'PREFER_DATES_FROM': 'future' resolves ambiguities like "Friday at 5pm"
     # to the upcoming Friday, not the one in the past.
     settings = {'PREFER_DATES_FROM': 'future', 'RETURN_AS_TIMEZONE_AWARE': False}
     parsed_date = search_dates(text_to_parse, settings=settings)
 
     if parsed_date:
-        # dateparser returns a list of (text, datetime_obj) tuples. We take the first.
+        # search_dates returns a list of (text, datetime_obj) tuples. We use the first.
         return parsed_date[0][1].isoformat()
-    
-    return None # Return None if parsing fails
+    return None
 
 def normalized_time(entity_dict):
     """
@@ -275,67 +324,68 @@ def normalized_time(entity_dict):
 
 def extract_word_entity(word, sentence):
     """
-    Extracts a structured entity, now prioritizing Stanza's NER.
-    It correctly handles multi-word entities (e.g., "financial report").
+    Creates a structured dictionary for a word, prioritizing Stanza's NER.
+
+    This function implements a "NER-first" strategy. It first checks if the
+    word is part of a multi-word named entity (e.g., "Google LLC", "next Tuesday").
+    If so, it uses the full entity text and type. If not, it falls back to
+    using the word's part-of-speech tag to infer a generic type.
+
+    Args:
+        word (stanza.Word): The word to analyze.
+        sentence (stanza.Sentence): The sentence containing the word.
+
+    Returns:
+        tuple[dict, list, stanza.Entity]: A tuple containing:
+            - The structured entity dictionary.
+            - A list of any embedded parameters found.
+            - The original Stanza entity object, if one was found.
     """
-    # --- Stanza NER Integration ---
-    # Check if the current word is part of a larger named entity identified by Stanza.
-    # `sentence.ents` contains all entities like ("Microsoft", "ORG"), ("tomorrow morning", "DATE").
-    found_entity = None
-    for ent in sentence.ents:
-        # Check if the current word is one of the words that make up this entity.
-        if word in ent.words:
-            found_entity = ent
-            break
+    # Check if the word is part of a larger named entity
+    found_entity = next((ent for ent in sentence.ents if word in ent.words), None)
 
     entity = {
         "lemma": word.lemma,
         "pos": word.upos,
-        "stanza_word_obj": word # --- NEW: Store the word object for sorting later ---
+        "stanza_word_obj": word  # Temporary key for sorting; removed before output
     }
 
     if found_entity:
-        # This is a named entity (e.g., ORG, PERSON, DATE). Use its properties.
+        # Use the full text and type from the identified NER entity
         entity["text"] = found_entity.text
         entity["ner_type"] = found_entity.type
     else:
-        # Not a named entity. Fall back to POS-based heuristics.
+        # Fallback to single-word analysis based on part-of-speech
         entity["text"] = word.text
-        # Fallback NER type based on the Part-of-Speech tag.
-        if word.upos == "NOUN":
-            entity["ner_type"] = "THING"
-        elif word.upos == "PROPN":
-            entity["ner_type"] = "PROPN_UNKNOWN" # Proper noun, but not a known entity type
-        elif word.upos == "PRON":
-            entity["ner_type"] = "PRONOUN"
-        elif word.upos == "NUM":
-            entity["ner_type"] = "NUMBER"
-        else:
-            entity["ner_type"] = "OTHER"
+        if word.upos == "NOUN": entity["ner_type"] = "THING"
+        elif word.upos == "PROPN": entity["ner_type"] = "PROPN_UNKNOWN"
+        elif word.upos == "PRON": entity["ner_type"] = "PRONOUN"
+        elif word.upos == "NUM": entity["ner_type"] = "NUMBER"
+        else: entity["ner_type"] = "OTHER"
 
-    # --- Normalization Step ---
-    normalized_value = entity["lemma"] # Default normalization
+    # --- Normalization ---
+    normalized_value = entity["lemma"]  # Default to lemma
     if entity["ner_type"] in ["DATE", "TIME"]:
-        # Use our new, powerful dateparser function
         normalized_value = normalize_time_and_date(entity) or entity["lemma"]
-    elif entity["ner_type"] == "NUMBER" or word.upos == "NUM":
+    elif entity["ner_type"] == "NUMBER":
         normalized_value = word.lemma
-    elif found_entity: # For entities like ORG, PERSON, GPE
-        normalized_value = found_entity.text
+    elif found_entity:
+        normalized_value = found_entity.text  # Use full text for proper names
 
     entity["normalized"] = normalized_value
 
-    # --- Extract Modifiers and Prepositions
+    # --- Extract Modifiers and Prepositions ---
     preposition = extract_word_preposition(word, sentence)
     if preposition:
         entity["preposition"] = preposition
-    
-    modifiers, embedded = extract_word_modifiers_and_embedded_params(word, sentence)
+
+    modifiers, embedded = extract_word_modifiers_and_embedded_params(word, sentence, found_entity)
     if modifiers:
         entity["modifiers"] = modifiers
-    
+
     return entity, embedded, found_entity
 
+    # old method for custom NER Recognition
     # --- Named Entity Recognition Heuristics ---
     lower_text = word.text.lower()
     lemma_lower = word.lemma.lower()
@@ -406,178 +456,166 @@ def extract_word_entity(word, sentence):
     return entity, embedded
 
 def infer_role_from_preposition(preposition):
+    """
+    Maps common prepositions to semantic roles.
+
+    Args:
+        preposition (str): The preposition text (e.g., "from", "with").
+
+    Returns:
+        str: The inferred semantic role (e.g., "source", "instrument"),
+             or None.
+    """
     if not preposition:
         return None
-    return {
-        "from": "source",
-        "by": "agent",
-        "with": "instrument",
-        "for": "beneficiary",
-        "to": "target",
-        "in": "location",
-        "on": "location",
-        "at": "location",
-        "before": "time_reference",
-        "after": "time_reference",
-        "during": "time_reference"
-    }.get(preposition.lower(), None)
+    role_map = {
+        "from": "source", "by": "agent", "with": "instrument", "for": "beneficiary",
+        "to": "target", "in": "location", "on": "location", "at": "location",
+        "before": "time_reference", "after": "time_reference", "during": "time_reference"
+    }
+    return role_map.get(preposition.lower())
 
 def merge_time_entities(parameters):
     """
-    Finds and merges separate but related time entities into a single,
-    more complete entity. This is the final cleanup step.
-    
-    Example: Merges ["9 tomorrow"] and ["morning"] into ["9 tomorrow morning"].
+    Finds and merges separate but related time entities into a single entity.
+
+    For example, if "at 9" and "tomorrow morning" are parsed as two separate
+    parameters, this function combines them into a single parameter with the
+    text "at 9 tomorrow morning" and re-parses it for a more accurate result.
+
+    Args:
+        parameters (list): The list of all extracted parameter dictionaries.
+
+    Returns:
+        list: The updated list of parameters with time entities merged.
     """
-    # 1. Collect all time-related parameters and all other parameters.
     time_params = [p for p in parameters if p.get("role") == "time_reference"]
     other_params = [p for p in parameters if p.get("role") != "time_reference"]
 
-    # 2. Handle the case where there is 0 or 1 time entity (no merge needed).
     if len(time_params) <= 1:
-        # Even if we don't merge, we MUST clean the temporary key before returning.
-        if time_params:  # Check if the list isn't empty
-            if 'stanza_word_obj' in time_params[0]['entity']:
-                del time_params[0]['entity']['stanza_word_obj']
-        # Return the RECONSTRUCTED list from the clean parts. This is the key fix.
-        return other_params + time_params
+        return parameters # No merge needed
     
-    # 3. Handle the case where a merge is needed (more than 1 time entity).
-    # We sort them by their first word's position in the sentence to keep the order correct.
-    # This is a robust way to handle the word order.
+    # Sort time entities by their position in the sentence to maintain correct order
     time_params.sort(key=lambda p: p['entity']['stanza_word_obj'].id)
-
-    # Correctly build the combined text *from the sorted list*.
+    
     combined_text = " ".join([p['entity']['text'] for p in time_params])
-
-    # Now, clean the temporary keys from the original list parts.
-    for p in time_params:
-        if 'stanza_word_obj' in p['entity']:
-            del p['entity']['stanza_word_obj']
-
-
-    # 3. Use dateparser on the new, full text string.
+    
+    # Use dateparser on the new, complete text string
     settings = {'PREFER_DATES_FROM': 'future', 'RETURN_AS_TIMEZONE_AWARE': False}
     parsed_results = search_dates(combined_text, settings=settings)
 
-    # If merging fails, we must still return a clean list.
     if not parsed_results:
-        return other_params + time_params
+        return other_params + time_params # Return original parts if merge fails
 
     normalized_datetime = parsed_results[0][1].isoformat()
 
-    # 4. Create a single new parameter to replace the old ones.
+    # Create a single new parameter to replace the old ones
     merged_param = {
         "role": "time_reference",
         "entity": {
             "text": combined_text,
-            "pos": "TIME", # Generic POS for the merged entity
-            "lemma": combined_text,
+            "pos": "TIME",
+            "lemma": combined_text.lower(),
             "ner_type": "TIME",
             "normalized": normalized_datetime
         }
     }
-
-    # 5. Return the other parameters plus our new, single merged time parameter.
     return other_params + [merged_param]
 
 def extract_parameters(parent_word, sentence):
     """
-    Recursively finds all parameters (obj, iobj, xcomp, obl, etc.) for a given action word.
+    Extracts all parameters for a given action word using dependency relations.
+
+    This function iterates through the grammatical children of the action verb
+    and assigns them semantic roles based on their dependency relation (`deprel`)
+    and other contextual clues like prepositions.
+
+    Args:
+        parent_word (stanza.Word): The action word (e.g., the root verb).
+        sentence (stanza.Sentence): The sentence object.
+
+    Returns:
+        list: A list of structured parameter dictionaries.
     """
     parameters = []
-    # --- NEW: A set to track word IDs that have already been processed ---
-    processed_word_ids = set()
-    children = [word for word in sentence.words if word.head == parent_word.id]
+    processed_word_ids = set() # Track words handled by multi-word NER
     
+    children = [word for word in sentence.words if word.head == parent_word.id]
     for child in children:
-        # --- NEW: If we've already handled this word, skip it ---
         if child.id in processed_word_ids:
             continue
 
         param = None
         entity, embedded_params, stanza_entity = extract_word_entity(child, sentence)
 
-        # --- NEW: If this was part of a multi-word entity, mark all its words as processed ---
         if stanza_entity:
             for w in stanza_entity.words:
                 processed_word_ids.add(w.id)
 
+        # Main role assignment logic based on dependency relation
+        deprel = child.deprel
         ner_type = entity.get("ner_type")
         prep = entity.get("preposition")
 
         # 1. Direct Object
-        if child.deprel == 'obj':
+        if deprel == 'obj':
             param = {
                 "role": "direct_object",
                 "entity": entity
             }
-
         # 2. Indirect Object
-        elif child.deprel == 'iobj':
+        elif deprel == 'iobj':
             param = {
                 "role": "recipient",
                 "entity": entity
             }
-
         # 3. Secondary Action
-        elif child.deprel == 'xcomp':
+        elif deprel == 'xcomp':
             param = {
                 "role": "secondary_action",
                 "entity": extract_secondary_entity(child, sentence)
             }
-
         # 4. Clausal Complement
-        elif child.deprel == 'ccomp':
+        elif deprel == 'ccomp':
             param = {
                 "role": "embedded_clause",
                 "entity": extract_secondary_entity(child, sentence)
             }
-
         # 5. Adverbial Clause
-        elif child.deprel == 'advcl':
+        elif deprel == 'advcl':
             param = {
                 "role": "condition_or_cause",
                 "entity": extract_secondary_entity(child, sentence)
             }
-
-        # 6. Oblique (obl or obl:unmarked)
-        elif child.deprel in ['obl', 'obl:unmarked', 'nmod']:
-
-            # Time-based ner_type
+        # 6. Oblique (obl or obl:unmarked) and nmod
+        elif deprel in ['obl', 'obl:unmarked', 'nmod']:
             if ner_type in ['TIME', 'DATE']:
                 param = {
                     "role": "time_reference",
                     "entity": entity
                 }
-            
-            elif entity.get("ner_type") == "NUMBER" and entity.get("preposition") == "at":
+            elif entity.get("ner_type") == "NUMBER" and prep == "at":
                 param = {
                     "role": "time_reference",
                     "entity": entity
                 }
-
-            # Location
             elif ner_type == "GPE" or (prep in ["in", "on", "at"]):
                 param = {
                     "role": "location",
                     "entity": entity
                 }
-
             # Source
             elif prep == "from":
                 param = {
                     "role": "source",
                     "entity": entity
                 }
-
             # Target
             elif prep == "to":
                 param = {
                     "role": "target",
                     "entity": entity
                 }
-
             # Beneficiary
             elif prep == "for":
                 # If it's a pronoun or proper noun → likely a beneficiary
@@ -592,7 +630,6 @@ def extract_parameters(parent_word, sentence):
                         "role": "subject",  # or "topic", if you prefer
                         "entity": entity
                     }
-    
             # Instrument or Companion
             elif prep == "with":
                 if child.upos in ["PROPN", "PRON"]:
@@ -603,36 +640,31 @@ def extract_parameters(parent_word, sentence):
                     "role": inferred,
                     "entity": entity
                 }
-
             # Agent (by)
-            elif prep == "by" or child.deprel in ['nmod:agent', 'obl:agent']:
+            elif prep == "by" or deprel in ['nmod:agent', 'obl:agent']:
                 param = {
                     "role": "agent",
                     "entity": entity
                 }
-
             # Fallback from preposition or ner_type
             elif prep:
                 param = {
                     "role": infer_role_from_preposition(prep) or "oblique",
                     "entity": entity
                 }
-
             else:
                 param = {
                     "role": "modifier",
                     "entity": entity
                 }
-
         # 7. Possessor (e.g., "John's book")
-        elif child.deprel == 'nmod:poss':
+        elif deprel == 'nmod:poss':
             param = {
                 "role": "possessor",
                 "entity": entity
             }
-
         # 8. Other modifiers (amod, advmod)
-        elif child.deprel in ['amod', 'advmod']:
+        elif deprel in ['amod', 'advmod']:
             param = {
                 "role": "modifier",
                 "entity": entity
@@ -641,9 +673,8 @@ def extract_parameters(parent_word, sentence):
         # ➕ Add main parameter
         if param:
             parameters.append(param)
-            # print(f"Extracted parameter: {param['role']} -> {param['entity']}")
 
-        # ➕ Add embedded parameters extracted inside the entity (from modifiers)
+        # Process any embedded parameters that were extracted
         for ep in embedded_params:
             ep_entity, _, _ = extract_word_entity(ep["word"], sentence)
             ep_ner_type = ep_entity.get("ner_type")
@@ -665,6 +696,7 @@ def extract_parameters(parent_word, sentence):
             })
             # print(f"Extracted embedded parameter: {role} -> {ep_entity}")
 
+    # Final cleanup step to merge related time entities
     parameters = merge_time_entities(parameters)
     return parameters
 
@@ -693,26 +725,31 @@ def extract_secondary_entity(action_word, sentence):
     return entity
 
 def extract_tasks(action_word, sentence):
-    action = {
-        'lemma': action_word.lemma,
-        'text': action_word.text,
-        'pos': action_word.upos
-    }
+    """
+    Constructs the main task object, including action, agent, and parameters.
+
+    Args:
+        action_word (stanza.Word): The root word representing the main action.
+        sentence (stanza.Sentence): The sentence object.
+
+    Returns:
+        dict: A dictionary representing the primary task.
+    """
+    action = {'lemma': action_word.lemma, 'text': action_word.text, 'pos': action_word.upos}
+    
+    # Find the agent (subject of the action)
+    agent_word = next((w for w in sentence.words if w.head == action_word.id and w.deprel == 'nsubj'), None)
     agent = None
-    for word in sentence.words:
-        if word.head == action_word.id and word.deprel == 'nsubj':
-            agent = {
-                "text": word.text,
-                "pos": word.upos,
-                "is_ai": word.lemma == 'you'
-            }
-            break
+    if agent_word:
+        agent = {
+            "text": agent_word.text,
+            "pos": agent_word.upos,
+            "is_ai": agent_word.lemma == 'you' # Flag if the AI is the agent
+        }
 
     task = {
-        # "id": "task_1",
         "action": action,
         "agent": agent,
-        # "confidence": 0.95,
         "parameters": extract_parameters(action_word, sentence)
     }
 
@@ -720,38 +757,41 @@ def extract_tasks(action_word, sentence):
 
 def recursively_clean_word_objects(obj):
     """
-    Recursively walks through a dictionary or list and removes any key
-    named 'stanza_word_obj'. This is the final cleanup step before
-    converting to JSON.
+    Recursively removes temporary 'stanza_word_obj' keys from the final output.
+
+    This function cleans the final dictionary/list structure before JSON
+    serialization, ensuring the output is clean and contains no un-serializable
+    Python objects.
+
+    Args:
+        obj (dict or list): The object to clean.
     """
     if isinstance(obj, dict):
-        # Create a list of keys to remove to avoid modifying dict while iterating
-        keys_to_remove = [key for key in obj if key == 'stanza_word_obj']
-        for key in keys_to_remove:
-            del obj[key]
-        # Recursively clean the values
-        for key, value in obj.items():
+        if 'stanza_word_obj' in obj:
+            del obj['stanza_word_obj']
+        for value in obj.values():
             recursively_clean_word_objects(value)
     elif isinstance(obj, list):
-        # Recursively clean each item in the list
         for item in obj:
             recursively_clean_word_objects(item)
+
 
 # --- The Main Parser Function ---
 
 def parse_query_to_structured_json(doc):
+    """
+    Orchestrates the entire parsing pipeline for a given document.
+
+    Args:
+        doc (stanza.Document): The processed Stanza document.
+
+    Returns:
+        dict: The final, structured JSON representation of the command.
+    """
     if not doc.sentences:
         return {"error": "No sentences found."}
 
     sentence = doc.sentences[0]
-    # --- NEW: It's good practice to print the entities Stanza found for debugging ---
-    print("\n--- Stanza's Named Entities ---")
-    if not sentence.ents:
-        print("None found.")
-    for ent in sentence.ents:
-        print(f'-> text: "{ent.text}", type: {ent.type}')
-    print("-" * 20)
-
     root = find_root(sentence)
 
     if not root:
@@ -762,7 +802,7 @@ def parse_query_to_structured_json(doc):
         "pragmatics": extract_pragmatics(doc),
         "tasks": extract_tasks(root, sentence)
     }
-    # Clean up any temporary word objects before returning
+    
     recursively_clean_word_objects(structured_output)
     return structured_output
 
@@ -770,7 +810,9 @@ def parse_query_to_structured_json(doc):
 # --- Main Application Logic ---
 
 def main():
-    """The main function to set up Stanza and run the interactive shell."""
+    """
+    The main function to set up Stanza and run the interactive command shell.
+    """
     print("Initializing Stanza NLP Pipeline... (This may take a moment)")
     try:
         nlp = stanza.Pipeline('en', processors=PROCESSORS, use_gpu=False)
@@ -778,14 +820,10 @@ def main():
         print("Type 'exit' or 'quit' to close the shell.")
     except Exception as e:
         print(f"Error initializing Stanza pipeline: {e}")
-        # --- NEW: Added a helpful hint to download the models ---
         print("\nHint: If this is your first time, you may need to download the models.")
-        print("Run this in a Python shell: ")
-        print("import stanza")
-        print("stanza.download('en')")
+        print("Run this in a Python shell: \nimport stanza\nstanza.download('en')")
         sys.exit(1)
 
-    # The interactive loop
     while True:
         try:
             user_input = input("\n> ")
@@ -793,43 +831,34 @@ def main():
                 print("Exiting. Goodbye!")
                 break
             
-            if not user_input:
+            if not user_input.strip():
                 continue
 
-            # Process the user's text
             doc = nlp(user_input)
             
-            # Print the three different analyses
-            # print_dependency_tree(doc)
             # A document can have multiple sentences. Let's work with the first one.
             sentence = doc.sentences[0]
             print("--- Word Attributes ---")
             for word in sentence.words:
                 # The word's index in the sentence (1-based)
                 print(f"ID: {word.id}") 
-                
                 # The text of the word
                 print(f"Text: {word.text}")
-                
                 # The lemma (base form) of the word
                 print(f"Lemma: {word.lemma}")
-                
                 # The universal POS tag (VERB, NOUN, ADJ...)
                 print(f"UPOS: {word.upos}")
-                
                 # The more specific treebank tag (VB, NN, JJ...)
                 print(f"XPOS: {word.xpos}")
-                
                 # The ID of the word this word is attached to (its parent/head)
                 print(f"Head ID: {word.head}")
-                
                 # The dependency relation label (e.g., 'nsubj', 'obj')
                 print(f"Dependency Relation: {word.deprel}")
-                
                 print("-" * 20)
             
             result = parse_query_to_structured_json(doc)
-            # Pretty print the JSON result
+            
+            print("\n--- Structured JSON Output ---")
             print(json.dumps(result, indent=2))
 
         except KeyboardInterrupt:
