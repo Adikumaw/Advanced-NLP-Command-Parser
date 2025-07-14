@@ -1,54 +1,77 @@
 {
-  "text": "analyze",
-  "lemma": "analyze",
-  "pos": "VERB",
-  "modifiers": [],
-  "subject": {
-    "text": "you",
-    "lemma": "you",
-    "pos": "PRON",
-    "modifiers": [],
-    "subject": null,
-    "object": null,
-    "auxiliaries": [],
-    "oblique_args": []
+  "metadata": {
+    "source_text": "Send the weekly report from accounting to marketing next Friday.",
+    "num_sentences": 1,
+    "timestamp": "2025-07-14T13:33:39.678989"
   },
-  "object": {
-    "text": "report",
-    "lemma": "report",
-    "pos": "NOUN",
-    "modifiers": [
-      { "type": "adjective", "text": "latest" },
-      { "type": "adjective", "text": "financial" },
-      {
-        "text": "Microsoft",
-        "lemma": "Microsoft",
-        "pos": "PROPN",
-        "modifiers": [],
-        "subject": null,
-        "object": null,
-        "auxiliaries": [],
-        "oblique_args": [],
-        "relation_type": "from"
-      }
-    ],
-    "subject": null,
-    "object": null,
-    "auxiliaries": [],
-    "oblique_args": []
-  },
-  "auxiliaries": ["Can"],
-  "oblique_args": [
-    {
-      "text": "me",
-      "lemma": "I",
-      "pos": "PRON",
-      "modifiers": [],
-      "subject": null,
-      "object": null,
-      "auxiliaries": [],
-      "oblique_args": [],
-      "relation_type": "for"
+  "pragmatics": {
+    "intent_primary": "COMMAND",
+    "sentiment": "neutral",
+    "emotion": null,
+    "style": {
+      "formality": "neutral",
+      "politeness": 5,
+      "modality": null
     }
-  ]
+  },
+  "tasks": {
+    "action": {
+      "lemma": "send",
+      "text": "Send",
+      "pos": "VERB"
+    },
+    "agent": null,
+    "parameters": [
+      {
+        "role": "direct_object",
+        "entity": {
+          "lemma": "report",
+          "pos": "NOUN",
+          "text": "report",
+          "ner_type": "THING",
+          "normalized": "report",
+          "modifiers": [
+            {
+              "text": "weekly",
+              "lemma": "weekly",
+              "pos": "ADJ",
+              "deprel": "amod"
+            }
+          ]
+        }
+      },
+      {
+        "role": "source",
+        "entity": {
+          "lemma": "accounting",
+          "pos": "NOUN",
+          "text": "accounting",
+          "ner_type": "THING",
+          "normalized": "accounting",
+          "preposition": "from"
+        }
+      },
+      {
+        "role": "target",
+        "entity": {
+          "lemma": "marketing",
+          "pos": "NOUN",
+          "text": "marketing",
+          "ner_type": "THING",
+          "normalized": "marketing",
+          "preposition": "to"
+        }
+      },
+      {
+        "role": "time_reference",
+        "entity": {
+          "lemma": "Friday",
+          "pos": "PROPN",
+          "text": "next Friday",
+          "ner_type": "DATE",
+          "normalized": "2025-07-18T00:00:00"
+        }
+      }
+    ]
+  }
 }
