@@ -1,0 +1,154 @@
+----------------------------------------------------------------------------------
+
+## 🐳 1. Build the Docker Image (with caching)
+Use Docker BuildKit to enable caching of pip dependencies and speed up future builds.
+
+```bash
+DOCKER_BUILDKIT=1 docker build -t nlu-service .
+````
+
+----------------------------------------------------------------------------------
+
+## 🔁 2. Rebuild only if requirements.txt changes
+
+To avoid re-downloading packages every time:
+
+* Modify `requirements.txt` only when needed.
+* Avoid placing `COPY . /code` before dependency installation.
+
+Our Dockerfile is already optimized for this.
+
+----------------------------------------------------------------------------------
+
+## 🚀 3. Run the Container
+
+```bash
+docker run --name nlu-container   -v /etc/localtime:/etc/localtime:ro   -p 8000:8000   -d nlu-service
+```
+
+Access the service at:
+
+```
+http://localhost:8000
+```
+
+----------------------------------------------------------------------------------
+
+## 🧹 4. Stop & Remove Containers
+
+Stop the container:
+
+```bash
+docker stop nlu-container
+```
+
+Remove the container:
+
+```bash
+docker rm nlu-container
+```
+
+----------------------------------------------------------------------------------
+
+## 🔍 5. Check Logs
+
+```bash
+docker logs nlu-container
+```
+
+----------------------------------------------------------------------------------
+
+## 📦 6. List Images and Containers
+
+List all running containers:
+```bash
+docker ps
+```
+
+List all containers (including stopped):
+```bash
+docker ps -a
+```
+
+List all Docker images:
+```bash
+docker images
+```
+
+----------------------------------------------------------------------------------
+
+## ❌ 7. Clean Up Docker
+
+Remove unused containers, images, and cache:
+
+```bash
+docker system prune
+```
+
+Be cautious — this removes all stopped containers and dangling images.
+
+----------------------------------------------------------------------------------
+
+## 🐞 8. Debug Interactively
+
+Enter the container shell:
+
+```bash
+docker exec -it nlu-container /bin/bash
+```
+
+Check if Python or dependencies are installed:
+
+```bash
+python3 -m pip list
+```
+
+----------------------------------------------------------------------------------
+
+## 📁 9. Docker Cache Info
+
+We're using BuildKit + pip cache mount:
+
+* Packages are cached in `/root/.cache/pip`
+* This reduces internet usage significantly across builds
+
+BuildKit is activated using:
+
+```bash
+DOCKER_BUILDKIT=1
+```
+
+----------------------------------------------------------------------------------
+
+## 🛑 10. Handle Port Conflicts
+
+If port 8000 is already in use:
+
+```bash
+docker ps  # Find container using 8000
+docker stop <container_id>
+```
+
+Or run on a different port:
+
+```bash
+docker run --name nlu-container -p 8080:8000 -d nlu-service
+```
+
+----------------------------------------------------------------------------------
+
+## 📄 11. Add `.dockerignore` (Optional but Recommended)
+
+Create a `.dockerignore` file in the root:
+
+```
+__pycache__/
+*.pyc
+.venv/
+.git/
+.env
+```
+
+This reduces image size and speeds up build.
+
+----------------------------------------------------------------------------------

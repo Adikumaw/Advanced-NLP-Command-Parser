@@ -1,0 +1,16 @@
+# Install all required Python packages from the requirements file
+```
+pip install -r requirements.txt
+```
+
+# Download NLP models using the script (only needed once)
+# This script likely downloads required language models for Stanza
+```
+python stanza_model_download.py
+```
+
+# Start the FastAPI application using Uvicorn
+# The app will be accessible at http://0.0.0.0:8000
+```
+uvicorn app.main:app --host 0.0.0.0 --port 8000
+```

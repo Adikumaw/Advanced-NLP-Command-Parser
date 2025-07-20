@@ -1,181 +1,83 @@
-if auxiliary and lemma is "can" then add field challenge.
-next find challenge to what. so go to the head ID. and mark that head as the challenge subject. "analyse".
-next find to whome. by finding nsubj of as sibling. "you".
-head ID 0 shows root.
+System Reasoning and Logic
+1. Core Philosophy: From Chaos to Structure
 
-> Send the weekly report from accounting to marketing next Friday.
+The fundamental purpose of this parser is to translate the inherent ambiguity and variability of human language into a predictable, structured, and machine-readable format. The entire system is built on a "pipeline" of reasoning, where each step refines the analysis and adds a layer of understanding.
 
-{
-  "metadata": {
-    "source_text": "Send the weekly report from accounting to marketing next Friday.",
-    "num_sentences": 1,
-    "timestamp": "2023-10-27T10:30:00.123456"
-  },
-  "pragmatics": {
-    "intent_primary": "COMMAND",
-    "sentiment": "neutral",
-    ...
-  },
-  "tasks": {
-    "action": {
-      "lemma": "send",
-      "text": "Send",
-      "pos": "VERB"
-    },
-    "agent": null,
-    "parameters": [
-      {
-        "role": "direct_object",
-        "entity": {
-          "lemma": "report",
-          "pos": "NOUN",
-          "text": "the weekly report",
-          "ner_type": "THING",
-          "normalized": "report",
-          "modifiers": [
-            { "text": "weekly", ... }
-          ]
-        }
-      },
-      {
-        "role": "source",
-        "entity": {
-          "lemma": "accounting",
-          "pos": "NOUN",
-          "text": "accounting",
-          "ner_type": "THING",
-          "normalized": "accounting"
-        }
-      },
-      {
-        "role": "target",
-        "entity": {
-          "lemma": "marketing",
-          "pos": "NOUN",
-          "text": "marketing",
-          "ner_type": "THING",
-          "normalized": "marketing"
-        }
-      },
-      {
-        "role": "time_reference",
-        "entity": {
-          "text": "next Friday",
-          "pos": "TIME",
-          "lemma": "next Friday",
-          "ner_type": "DATE",
-          "normalized": "2023-11-03T00:00:00"
-        }
-      }
-    ]
-  }
-}
+The core reasoning logic is not based on true artificial intelligence but on computational linguistics: applying a defined set of rules, heuristics, and statistical models to deconstruct a sentence based on its grammatical and semantic properties.
+2. The Foundation: The Dependency Tree
 
-{
-  "metadata": {
-    "source_text": "Remind me to eat maggie at 9pm and send the report tomorrow morning",
-    "timestamp": "2025-07-10T14:20:00+05:30",
-    "user_id": "aditya_k"
-  },
-  "pragmatics": {
-    "intent_primary": "REQUEST",
-    "intent_secondary": ["TASK_CREATION", "REMINDER"],
-    "sentiment": "neutral",
-    "emotion": null,
-    "style": {
-      "formality": "informal",
-      "politeness": 8,
-      "modality": "possibility"
-    }
-  },
-  "context": {
-    "timezone": "Asia/Kolkata",
-    "device": "desktop",
-    "previous_task_id": "null"
-  },
-  "tasks": [
-    {
-      "id": "task_1",
-      "action": {
-        "lemma": "remind",
-        "text": "remind",
-        "pos": "VERB"
-      },
-      "confidence": 0.95,
-      "agent": {
-        "text": "you",
-        "pos": "PRON",
-        "is_ai": true
-      },
-      "parameters": [
-        {
-          "role": "recipient",
-          "entity": {
-            "text": "me",
-            "pos": "PRON",
-            "lemma": "I"
-          }
-        },
-        {
-          "role": "secondary_action",
-          "entity": {
-            "action": {
-              "text": "eat",
-              "lemma": "eat",
-              "pos": "VERB"
-            },
-            "parameters": [
-              {
-                "role": "direct_object",
-                "entity": {
-                  "text": "maggie",
-                  "pos": "PROPN"
-                }
-              },
-              {
-                "role": "time",
-                "entity": {
-                  "text": "9pm",
-                  "normalized": "21:00:00",
-                  "pos": "NOUN",
-                  "ner_type": "TIME"
-                }
-              }
-            ]
-          }
-        }
-      ]
-    },
-    {
-      "id": "task_2",
-      "action": {
-        "lemma": "send",
-        "text": "send",
-        "pos": "VERB"
-      },
-      "confidence": 0.91,
-      "agent": {
-        "text": "you",
-        "is_ai": true
-      },
-      "parameters": [
-        {
-          "role": "direct_object",
-          "entity": {
-            "text": "report",
-            "pos": "NOUN"
-          }
-        },
-        {
-          "role": "time",
-          "entity": {
-            "text": "tomorrow morning",
-            "normalized": "2025-07-11T08:00:00",
-            "recurrence": null
-          }
-        }
-      ]
-    }
-  ]
-}
+The single most important concept driving the parser's logic is the dependency tree, provided by the Stanza depparse processor. We reason about the sentence not as a flat sequence of words, but as a hierarchy of relationships.
 
+    The Anchor (The root): The logic assumes that the grammatical root of a command sentence is the primary action the user wants to perform (e.g., "send", "create", "remind"). Everything else in the sentence is logically connected to this root.
+
+    Children as Parameters: Any word whose head is the root word is considered a direct child. The script reasons that these children and their own sub-trees represent the parameters of the main action. The deprel (dependency relation) label on the connection between the root and a child is the primary clue to that parameter's semantic role.
+
+3. The "NER-First" Strategy
+
+A key principle of the parser's logic is to prioritize information from the Named Entity Recognition (NER) model.
+
+Reasoning: A pre-trained NER model has been trained on billions of examples and is exceptionally good at identifying multi-word entities (e.g., "San Francisco", "ACME Corp", "next Tuesday morning"). It is almost always more reliable to trust the model's judgment on a multi-word entity than to try and reason about each word ("next", "Tuesday", "morning") individually.
+
+Implementation:
+
+    The extract_word_entity function first checks if a word is part of a larger entity found by Stanza's NER.
+
+    If yes: The entire multi-word entity is treated as a single, atomic unit. Its text, NER type (PERSON, ORG, DATE), and properties are used directly. All words within that entity are marked as "processed" to avoid analyzing them again.
+
+    If no: The script falls back to reasoning about the single word based on its Part-of-Speech (POS) tag and other heuristics.
+
+4. Semantic Role Assignment: A Heuristic-Based Approach
+
+Once an entity is identified, the script must reason about its role in the context of the action. This is achieved through a hierarchy of rules and heuristics. The following table outlines the core logic:
+
+If the parameter's...	And its...	Then the script reasons its role is...	Example
+deprel is obj	(Context doesn't matter)	direct_object	"Send the report"
+deprel is iobj	(Context doesn't matter)	recipient	"Give me the file"
+deprel is obl or nmod	NER type is DATE or TIME	time_reference	"Call me tomorrow"
+deprel is obl or nmod	Preposition (case) is "from"	source	"Email from ACME"
+deprel is obl or nmod	Preposition (case) is "to"	target	"Send it to John"
+deprel is obl or nmod	Preposition (case) is "with"	instrument or companion	"Open it with a key"
+deprel is obl or nmod	Preposition (case) is "in", "on", "at"	location	"Meeting in the conference room"
+deprel is obl or nmod	Preposition (case) is "for"	beneficiary or subject	"Get it for me" / "Search for news"
+deprel is nmod:agent or obl:agent	(Often has preposition "by")	agent	"A report written by marketing"
+
+5. Advanced Logic for Ambiguity and Context
+5.1. Modifiers vs. Embedded Parameters
+
+The parser must reason whether a phrase is simply describing an entity or introducing a new one.
+
+    Logic: Words with relations like amod (adjective) or compound are considered modifiers. They describe the parent noun and are kept as part of the main entity.
+
+    Example: In "the weekly financial report", "weekly" and "financial" are reasoned to be modifiers of "report".
+
+    Logic: A prepositional phrase (nmod, obl) attached to a noun often introduces a logically separate concept. The script identifies these as embedded parameters and extracts them to be processed as top-level parameters.
+
+    Example: In "the report from accounting", the script reasons that "accounting" is not a descriptor of the report, but the source of it. It is therefore extracted as a separate parameter.
+
+5.2. Time Aggregation and Normalization
+
+Human language often fragments time-related concepts. The script's logic is designed to counteract this.
+
+    Reasoning: Phrases like "at 9" and "tomorrow morning" are more powerful when combined. A user saying "Remind me tomorrow morning at 9" intends for a single point in time.
+
+    Implementation (merge_time_entities):
+
+        All parameters identified with the role time_reference are collected.
+
+        They are sorted based on their original position in the sentence to preserve word order.
+
+        Their text is concatenated (e.g., "tomorrow morning" + "at 9" -> "tomorrow morning at 9").
+
+        This new, complete string is sent to dateparser for a final, more accurate normalization.
+
+6. Limitations of the Current Logic
+
+It is critical to understand the boundaries of this system's reasoning:
+
+    Single-Sentence Commands: The logic is designed to operate on one simple or moderately complex sentence at a time. It cannot maintain context across multiple user inputs.
+
+    No Deep Semantics: The parser does not understand what a "report" is. It only understands its grammatical role. It cannot reason about complex or contradictory commands (e.g., "Send the email I deleted").
+
+    Sensitivity to Grammar: Heavily ungrammatical or complex sentences with multiple sub-clauses may confuse the dependency parser, leading to incorrect root identification and flawed analysis.
+
+    Ambiguity: In cases of true ambiguity (e.g., "Call me Jane"), the parser will make a best guess based on the dependency tree but may be incorrect without further context.

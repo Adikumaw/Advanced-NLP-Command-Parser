@@ -1,0 +1,24 @@
+# Step into your project directory
+```
+cd ~/elisa-assistant
+```
+
+# Remove the existing virtual environment (if any)
+```
+rm -rf venv
+```
+
+# Create a new virtual environment named 'venv'
+```
+python -m venv venv
+```
+
+# Activate the virtual environment
+```
+source venv/bin/activate
+```
+
+# Upgrade pip, setuptools, and wheel to the latest versions
+```
+pip install --upgrade pip setuptools wheel
+```
