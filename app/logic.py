@@ -18,6 +18,30 @@ from dateparser.search import search_dates
 # Use 'gpu=False' if you don't have a compatible GPU or CUDA installed.
 # The 'tokenize,pos,lemma,depparse,ner' processors are essential for the parsing logic.
 PROCESSORS = 'tokenize,pos,lemma,depparse,ner'
+NLP_PIPELINE = None # We will initialize this once, globally
+
+def initialize_nlp():
+    """Initializes the Stanza pipeline. To be called once on startup."""
+    global NLP_PIPELINE
+    if NLP_PIPELINE is None:
+        print("Initializing Stanza NLP Pipeline... (This may take a moment)")
+        NLP_PIPELINE = stanza.Pipeline('en', processors=PROCESSORS, use_gpu=False, verbose=False)
+        print("NLP Pipeline Ready.")
+
+# This will be the main entry point function for our service
+def process_text(text: str):
+    """
+    Takes a raw text string, processes it with the NLP pipeline,
+    and returns the structured JSON.
+    """
+    if NLP_PIPELINE is None:
+        # This is a fallback in case initialization failed, but it shouldn't happen.
+        return {"error": "NLP Pipeline not initialized."}
+    
+    doc = NLP_PIPELINE(text)
+    structured_output = parse_query_to_structured_json(doc)
+    
+    return structured_output
 
 # --- Helper Functions to Build JSON Parts ---
 
