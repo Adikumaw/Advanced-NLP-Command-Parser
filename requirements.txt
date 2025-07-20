@@ -1,0 +1,11 @@
+# nlu-service/requirements.txt
+fastapi
+uvicorn[standard]
+pydantic
+stanza
+dateparser
+
+# --- NEW, CRITICAL LINE ---
+# Force numpy to a version before the breaking 2.0 release.
+# This ensures compatibility with the current version of torch.
+numpy<2.0

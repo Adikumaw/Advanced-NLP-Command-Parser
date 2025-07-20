@@ -1,0 +1,16 @@
+# Ignore the virtual environment. This is the key to a small context.
+.venv
+venv
+
+# Ignore Python cache files
+__pycache__/
+*.pyc
+
+# Ignore IDE/OS files
+.idea/
+.vscode/
+.DS_Store
+
+# It's still good practice to ignore the Stanza resources folder,
+# even though it might be inside your .venv
+stanza_resources/
